@@ -16,13 +16,17 @@ import {
 	FlatList,
 	TouchableHighlight,
 	Pressable,
+	Image,
 } from 'react-native';
 
 import { Colors } from 'react-native/Libraries/NewAppScreen';
 
-const SECONDS_TO_SCAN_FOR = 7;
+const SECONDS_TO_SCAN_FOR = 0; // Scan until user click stop
 const SERVICE_UUIDS: string[] = [];
 const ALLOW_DUPLICATES = false;
+const WWV_DEVICE_NAME = 'ESP32';
+const WWV_WINDANGLE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
+const WWV_WINDANGLE_CHAR = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
 
 import BleManager, {
 	BleDisconnectPeripheralEvent,
@@ -44,10 +48,12 @@ declare module 'react-native-ble-manager' {
 }
 
 const App = () => {
+	const [dataInt, setDataInt] = useState(0);
 	const [isScanning, setIsScanning] = useState(false);
 	const [peripherals, setPeripherals] = useState(
 		new Map<Peripheral['id'], Peripheral>(),
 	);
+	var isConnected:boolean = false;
 
 	console.debug('peripherals map updated', [...peripherals.entries()]);
 
@@ -57,7 +63,7 @@ const App = () => {
 		setPeripherals(map => new Map(map.set(id, updatedPeripheral)));
 	};
 
-	const startScan = () => {
+	const toggleScan = () => {
 		if (!isScanning) {
 			// reset found peripherals before scan
 			setPeripherals(new Map<Peripheral['id'], Peripheral>());
@@ -66,8 +72,8 @@ const App = () => {
 				console.debug('[startScan] starting scan...');
 				setIsScanning(true);
 				BleManager.scan(SERVICE_UUIDS, SECONDS_TO_SCAN_FOR, ALLOW_DUPLICATES, {
-					matchMode: BleScanMatchMode.Sticky,
-					scanMode: BleScanMode.LowPower,
+					matchMode: BleScanMatchMode.Aggressive,
+					scanMode: BleScanMode.LowLatency,
 					callbackType: BleScanCallbackType.FirstMatch,
 					exactAdvertisingName: 'ESP32',
 				})
@@ -80,6 +86,8 @@ const App = () => {
 			} catch (error) {
 				console.error('[startScan] ble scan error thrown', error);
 			}
+		} else {
+			BleManager.stopScan();
 		}
 	};
 
@@ -117,7 +125,12 @@ const App = () => {
 		if (!peripheral.name) {
 			peripheral.name = 'NO NAME';
 		}
-		addOrUpdatePeripheral(peripheral.id, peripheral);
+		if (peripheral.name === WWV_DEVICE_NAME) {
+			addOrUpdatePeripheral(peripheral.id, peripheral);
+			BleManager.stopScan().then(() => {
+				console.log("BLE: Found", peripheral.name,' ', peripheral.id);
+			})
+		}
 	};
 
 	const togglePeripheralConnection = async (peripheral: Peripheral) => {
@@ -133,6 +146,7 @@ const App = () => {
 		} else {
 			await connectPeripheral(peripheral);
 		}
+		isConnected = false;
 	};
 
 	const retrieveConnected = async () => {
@@ -171,9 +185,11 @@ const App = () => {
 		bleManagerEmitter.addListener(
 			"BleManagerDidUpdateValueForCharacteristic",
 			({ value, peripheral, characteristic, service }) => {
-				// Convert bytes array to string
-				const data = value[0]+value[1]*0x100+value[2]*0x10000+value[3]*0x100000000;
-				console.log(`Received ${data} for characteristic ${characteristic}`);
+				
+				let v = value[0]+value[1]*0x100;
+				setDataInt(v);
+				console.log(`Received ${v} for characteristic ${characteristic}`);
+				isConnected = true;
 			}
 		);
 		// Actions triggereng BleManagerDidUpdateValueForCharacteristic event
@@ -185,8 +201,8 @@ const App = () => {
 
 				await connectAndPrepare(
 					peripheral.id,
-					'4fafc201-1fb5-459e-8fcc-c5c9c331914b',
-					'beb5483e-36e1-4688-b7f5-ea07361b26a8'
+					WWV_WINDANGLE_UUID,
+					WWV_WINDANGLE_CHAR
 				)
 				console.debug(`[connectPeripheral][${peripheral.id}] connected.`);
 
@@ -294,7 +310,9 @@ const App = () => {
 				'BleManagerDiscoverPeripheral',
 				handleDiscoverPeripheral,
 			),
-			bleManagerEmitter.addListener('BleManagerStopScan', handleStopScan),
+			bleManagerEmitter.addListener(
+				'BleManagerStopScan', 
+				handleStopScan),
 			bleManagerEmitter.addListener(
 				'BleManagerDisconnectPeripheral',
 				handleDisconnectedPeripheral,
@@ -373,6 +391,7 @@ const App = () => {
 					</Text>
 					<Text style={styles.rssi}>RSSI: {item.rssi}</Text>
 					<Text style={styles.peripheralId}>{item.id}</Text>
+					<Text style={styles.peripheralId}>Raw Data: {dataInt}</Text>
 				</View>
 			</TouchableHighlight>
 		);
@@ -382,11 +401,21 @@ const App = () => {
 		<>
 			<StatusBar />
 			<SafeAreaView style={styles.body}>
-				<Pressable style={styles.scanButton} onPress={startScan}>
+				<Pressable style={
+						isScanning ? 
+						styles.scanningButton : 
+						styles.scanButton
+					} onPress={toggleScan}>
 					<Text style={styles.scanButtonText}>
-						{isScanning ? 'Scanning...' : 'Scan Bluetooth'}
+						{isScanning ? 'Scanning...| Stop' : 'Scan for WWV'}
 					</Text>
 				</Pressable>
+{/* 
+				<Pressable style={styles.scanButton} onPress={retrieveConnected}>
+					<Text style={styles.scanButtonText}>
+						{isConnected ? 'Connected' : 'Connect'}
+					</Text>
+				</Pressable> */}
 
 				<Pressable style={styles.scanButton} onPress={retrieveConnected}>
 					<Text style={styles.scanButtonText}>
@@ -437,6 +466,15 @@ const styles = StyleSheet.create({
 		justifyContent: 'center',
 		paddingVertical: 16,
 		backgroundColor: '#0a398a',
+		margin: 10,
+		borderRadius: 12,
+		...boxShadow,
+	},
+	scanningButton: {
+		alignItems: 'center',
+		justifyContent: 'center',
+		paddingVertical: 16,
+		backgroundColor: Colors.red,
 		margin: 10,
 		borderRadius: 12,
 		...boxShadow,
