@@ -47,27 +47,18 @@ declare module 'react-native-ble-manager' {
 	}
 }
 
+var currentPeripherals:Peripheral;
+
 const App = () => {
 	const [dataInt, setDataInt] = useState(0);
 	const [isScanning, setIsScanning] = useState(false);
-	const [peripherals, setPeripherals] = useState(
-		new Map<Peripheral['id'], Peripheral>(),
-	);
-	var isConnected:boolean = false;
-
-	console.debug('peripherals map updated', [...peripherals.entries()]);
-
-	const addOrUpdatePeripheral = (id: string, updatedPeripheral: Peripheral) => {
-		// new Map() enables changing the reference & refreshing UI.
-		// TOFIX not efficient.
-		setPeripherals(map => new Map(map.set(id, updatedPeripheral)));
-	};
+	// const [peripherals, setPeriph
 
 	const toggleScan = () => {
+		if (currentPeripherals) {
+			if (currentPeripherals.connected) return;
+		}
 		if (!isScanning) {
-			// reset found peripherals before scan
-			setPeripherals(new Map<Peripheral['id'], Peripheral>());
-
 			try {
 				console.debug('[startScan] starting scan...');
 				setIsScanning(true);
@@ -99,14 +90,11 @@ const App = () => {
 	const handleDisconnectedPeripheral = (
 		event: BleDisconnectPeripheralEvent,
 	) => {
-		let peripheral = peripherals.get(event.peripheral);
-		if (peripheral) {
-			console.debug(
-				`[handleDisconnectedPeripheral][${peripheral.id}] previously connected peripheral is disconnected.`,
-				event.peripheral,
-			);
-			addOrUpdatePeripheral(peripheral.id, { ...peripheral, connected: false });
-		}
+		console.debug(
+			`[handleDisconnectedPeripheral][${currentPeripherals.id}] previously connected peripheral is disconnected.`,
+			event.peripheral,
+		);
+		currentPeripherals.connected = false;
 		console.debug(
 			`[handleDisconnectedPeripheral][${event.peripheral}] disconnected.`,
 		);
@@ -126,14 +114,17 @@ const App = () => {
 			peripheral.name = 'NO NAME';
 		}
 		if (peripheral.name === WWV_DEVICE_NAME) {
-			addOrUpdatePeripheral(peripheral.id, peripheral);
+			currentPeripherals = peripheral;
+			currentPeripherals.connected = false;
+			currentPeripherals.connecting = false;
 			BleManager.stopScan().then(() => {
-				console.log("BLE: Found", peripheral.name,' ', peripheral.id);
+				console.log("BLE: Found", currentPeripherals.name,' ', currentPeripherals.id);
 			})
 		}
 	};
 
 	const togglePeripheralConnection = async (peripheral: Peripheral) => {
+		console.log(`toggle connection: ${peripheral}`)
 		if (peripheral && peripheral.connected) {
 			try {
 				await BleManager.disconnect(peripheral.id);
@@ -143,36 +134,13 @@ const App = () => {
 					error,
 				);
 			}
+			peripheral.connected = false;
+			bleManagerEmitter.removeAllListeners("BleManagerDidUpdateValueForCharacteristic");
 		} else {
 			await connectPeripheral(peripheral);
 		}
-		isConnected = false;
 	};
 
-	const retrieveConnected = async () => {
-		try {
-			const connectedPeripherals = await BleManager.getConnectedPeripherals();
-			if (connectedPeripherals.length === 0) {
-				console.warn('[retrieveConnected] No connected peripherals found.');
-				return;
-			}
-
-			console.debug(
-				'[retrieveConnected] connectedPeripherals',
-				connectedPeripherals,
-			);
-
-			for (var i = 0; i < connectedPeripherals.length; i++) {
-				var peripheral = connectedPeripherals[i];
-				addOrUpdatePeripheral(peripheral.id, { ...peripheral, connected: true });
-			}
-		} catch (error) {
-			console.error(
-				'[retrieveConnected] unable to retrieve connected peripherals.',
-				error,
-			);
-		}
-	};
 
 	async function connectAndPrepare(peripheral: string, service: string, characteristic: string) {
 		// Connect to device
@@ -189,28 +157,24 @@ const App = () => {
 				let v = value[0]+value[1]*0x100;
 				setDataInt(v);
 				console.log(`Received ${v} for characteristic ${characteristic}`);
-				isConnected = true;
 			}
 		);
 		// Actions triggereng BleManagerDidUpdateValueForCharacteristic event
 	}
 	const connectPeripheral = async (peripheral: Peripheral) => {
 		try {
-			if (peripheral) {
-				addOrUpdatePeripheral(peripheral.id, { ...peripheral, connecting: true });
-
+			if (!peripheral.connected) {
+				peripheral.connecting = true;
+				console.debug(`[currentPeripheral][${peripheral}]`);
 				await connectAndPrepare(
 					peripheral.id,
 					WWV_WINDANGLE_UUID,
 					WWV_WINDANGLE_CHAR
 				)
 				console.debug(`[connectPeripheral][${peripheral.id}] connected.`);
-
-				addOrUpdatePeripheral(peripheral.id, {
-					...peripheral,
-					connecting: false,
-					connected: true,
-				});
+				
+				peripheral.connecting = false;
+				peripheral.connected = true;
 				// before retrieving services, it is often a good idea to let bonding & connection finish properly
 				await sleep(900);
 
@@ -252,9 +216,8 @@ const App = () => {
 					}
 				}
 
-				let p = peripherals.get(peripheral.id);
-				if (p) {
-					addOrUpdatePeripheral(peripheral.id, { ...peripheral, rssi });
+				if (peripheral.id) {
+					peripheral.rssi = rssi;
 				}
 			}
 		} catch (error) {
@@ -417,27 +380,20 @@ const App = () => {
 					</Text>
 				</Pressable> */}
 
-				<Pressable style={styles.scanButton} onPress={retrieveConnected}>
+				<Pressable style={styles.scanButton} 
+					onPress={ () => togglePeripheralConnection(currentPeripherals).then(
+						() => { 
+							console.log('abc'); // Prints "Success: The promise has successfully resolved!"
+						},
+						() => { 
+							console.log('def'); // Never executes because the Promise is resolved
+						}
+					  )}>
 					<Text style={styles.scanButtonText}>
-						{'Retrieve connected peripherals'}
+						{'Connect'}
 					</Text>
 				</Pressable>
 
-				{Array.from(peripherals.values()).length === 0 && (
-					<View style={styles.row}>
-						<Text style={styles.noPeripherals}>
-							No Peripherals, press "Scan Bluetooth" above.
-							In order to scan Bluetooth properly, Location must be turn on!
-						</Text>
-					</View>
-				)}
-
-				<FlatList
-					data={Array.from(peripherals.values())}
-					contentContainerStyle={{ rowGap: 12 }}
-					renderItem={renderItem}
-					keyExtractor={item => item.id}
-				/>
 			</SafeAreaView>
 		</>
 	);
