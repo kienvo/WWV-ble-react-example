@@ -26,7 +26,7 @@ const SERVICE_UUIDS: string[] = [];
 const ALLOW_DUPLICATES = false;
 const WWV_DEVICE_NAME = 'ESP32';
 const WWV_WINDANGLE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
-const WWV_WINDANGLE_CHAR = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
+const WWV_WINDANGLE_CHAR = ['beb5483e-36e1-4688-b7f5-ea07361b26a8', 'beb5483e-36e1-4688-b7f5-cafecafee270'];
 
 import BleManager, {
 	BleDisconnectPeripheralEvent,
@@ -47,16 +47,19 @@ declare module 'react-native-ble-manager' {
 	}
 }
 
-var currentPeripherals:Peripheral;
+var currentPeriph:Peripheral;
 
 const App = () => {
-	const [dataInt, setDataInt] = useState(0);
+	const [angle, setAngle] = useState(0);
+	const [meanAngle, setMeanAngle] = useState(0);
+	const [windAngle, setWindAngle] = useState(0);
+	const [compassAngle, setCompassAngle] = useState(0);
 	const [isScanning, setIsScanning] = useState(false);
-	// const [peripherals, setPeriph
+	const [connected, setConnected] = useState(false);
 
 	const toggleScan = () => {
-		if (currentPeripherals) {
-			if (currentPeripherals.connected) return;
+		if (currentPeriph) {
+			if (currentPeriph.connected) return;
 		}
 		if (!isScanning) {
 			try {
@@ -91,10 +94,10 @@ const App = () => {
 		event: BleDisconnectPeripheralEvent,
 	) => {
 		console.debug(
-			`[handleDisconnectedPeripheral][${currentPeripherals.id}] previously connected peripheral is disconnected.`,
+			`[handleDisconnectedPeripheral][${currentPeriph.id}] previously connected peripheral is disconnected.`,
 			event.peripheral,
 		);
-		currentPeripherals.connected = false;
+		currentPeriph.connected = false;
 		console.debug(
 			`[handleDisconnectedPeripheral][${event.peripheral}] disconnected.`,
 		);
@@ -114,11 +117,12 @@ const App = () => {
 			peripheral.name = 'NO NAME';
 		}
 		if (peripheral.name === WWV_DEVICE_NAME) {
-			currentPeripherals = peripheral;
-			currentPeripherals.connected = false;
-			currentPeripherals.connecting = false;
+			currentPeriph = peripheral;
+			currentPeriph.connected = false;
+			currentPeriph.connecting = false;
+			setConnected(currentPeriph.connected);
 			BleManager.stopScan().then(() => {
-				console.log("BLE: Found", currentPeripherals.name,' ', currentPeripherals.id);
+				console.log("BLE: Found", currentPeriph.name,' ', currentPeriph.id);
 			})
 		}
 	};
@@ -141,22 +145,34 @@ const App = () => {
 		}
 	};
 
+	async function toggleConnection() {
+		togglePeripheralConnection(currentPeriph);
+		setConnected(currentPeriph.connected == false);
+	}
 
-	async function connectAndPrepare(peripheral: string, service: string, characteristic: string) {
+	async function connectAndPrepare(peripheral: string, service: string, characteristics: string[]) {
 		// Connect to device
 		await BleManager.connect(peripheral);
 		// Before startNotification you need to call retrieveServices
 		await BleManager.retrieveServices(peripheral);
 		// To enable BleManagerDidUpdateValueForCharacteristic listener
-		await BleManager.startNotification(peripheral, service, characteristic);
+		characteristics.forEach( async (characteristic) => {
+			await BleManager.startNotification(peripheral, service, characteristic);
+		});
 		// Add event listener
 		bleManagerEmitter.addListener(
 			"BleManagerDidUpdateValueForCharacteristic",
 			({ value, peripheral, characteristic, service }) => {
-				
-				let v = value[0]+value[1]*0x100;
-				setDataInt(v);
-				console.log(`Received ${v} for characteristic ${characteristic}`);
+				if (characteristic === WWV_WINDANGLE_CHAR[0]) {
+					let v = value[0]+value[1]*0x100;
+					setWindAngle(v);
+					console.log(`Received ${v} for characteristic ${characteristic}`);
+				}
+				if (characteristic === WWV_WINDANGLE_CHAR[1]) {
+					let v = value[0]+value[1]*0x100;
+					setAngle(v);
+					console.log(`Received ${v} for characteristic ${characteristic}`);
+				}
 			}
 		);
 		// Actions triggereng BleManagerDidUpdateValueForCharacteristic event
@@ -219,6 +235,7 @@ const App = () => {
 				if (peripheral.id) {
 					peripheral.rssi = rssi;
 				}
+
 			}
 		} catch (error) {
 			console.error(
@@ -354,7 +371,7 @@ const App = () => {
 					</Text>
 					<Text style={styles.rssi}>RSSI: {item.rssi}</Text>
 					<Text style={styles.peripheralId}>{item.id}</Text>
-					<Text style={styles.peripheralId}>Raw Data: {dataInt}</Text>
+					<Text style={styles.peripheralId}>Raw Data: {angle}</Text>
 				</View>
 			</TouchableHighlight>
 		);
@@ -381,18 +398,25 @@ const App = () => {
 				</Pressable> */}
 
 				<Pressable style={styles.scanButton} 
-					onPress={ () => togglePeripheralConnection(currentPeripherals).then(
-						() => { 
-							console.log('abc'); // Prints "Success: The promise has successfully resolved!"
-						},
-						() => { 
-							console.log('def'); // Never executes because the Promise is resolved
-						}
-					  )}>
+					onPress={ () => {
+						toggleConnection();
+
+					}}>
 					<Text style={styles.scanButtonText}>
-						{'Connect'}
+						{connected ? 'Connected' : 'Connect'}
 					</Text>
 				</Pressable>
+
+				<View style={[styles.row]}>
+					<Text style={{
+							fontSize: 100,
+							textAlign: 'center',
+							padding: 10,
+							color: 'white'
+						}}>
+						{angle}
+					</Text>
+				</View>
 
 			</SafeAreaView>
 		</>
@@ -441,7 +465,7 @@ const styles = StyleSheet.create({
 		color: Colors.white,
 	},
 	body: {
-		backgroundColor: '#0082FC',
+		backgroundColor: 'black',
 		flex: 1,
 	},
 	sectionContainer: {
