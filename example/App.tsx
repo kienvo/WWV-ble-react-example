@@ -109,7 +109,6 @@ const App = () => {
 
 		setConnected(currentPeriph.connected);
 		setStatus(`Device connected!`);
-		bleManagerEmitter.removeAllListeners("BleManagerDidUpdateValueForCharacteristic");
 	};
 
 	const handleDisconnectedPeripheral = (
