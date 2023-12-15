@@ -95,16 +95,16 @@ const App = () => {
 		console.debug('[handleStopScan] scan is stopped.');
 	};
 
-	const handelConnectPeripheral = (
+	const handleConnectPeripheral = (
 		event: BleDisconnectPeripheralEvent,
 	) => {
 		console.debug(
-			`[handelConnectPeripheral][${currentPeriph.id}]`,
+			`[handleConnectPeripheral][${currentPeriph.id}]`,
 			event.peripheral,
 		);
 		currentPeriph.connected = true;
 		console.debug(
-			`[handelConnectPeripheral][${event.peripheral}] connected.`,
+			`[handleConnectPeripheral][${event.peripheral}] connected.`,
 		);
 
 		setConnected(currentPeriph.connected);
@@ -327,7 +327,7 @@ const App = () => {
 			),
 			bleManagerEmitter.addListener(
 				'BleManagerConnectPeripheral',
-				handelConnectPeripheral,
+				handleConnectPeripheral,
 			),
 
 			bleManagerEmitter.addListener(
