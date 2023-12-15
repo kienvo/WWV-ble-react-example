@@ -51,6 +51,7 @@ var currentPeriph:Peripheral;
 
 const App = () => {
 	const [angle, setAngle] = useState(0);
+	const [status, setStatus] = useState('');
 	const [meanAngle, setMeanAngle] = useState(0);
 	const [windAngle, setWindAngle] = useState(0);
 	const [compassAngle, setCompassAngle] = useState(0);
@@ -65,6 +66,7 @@ const App = () => {
 			try {
 				console.debug('[startScan] starting scan...');
 				setIsScanning(true);
+				setStatus('Scanning...');
 				BleManager.scan(SERVICE_UUIDS, SECONDS_TO_SCAN_FOR, ALLOW_DUPLICATES, {
 					matchMode: BleScanMatchMode.Aggressive,
 					scanMode: BleScanMode.LowLatency,
@@ -76,18 +78,38 @@ const App = () => {
 					})
 					.catch(err => {
 						console.error('[startScan] ble scan returned in error', err);
+						setStatus('Scanning failed!');
 					});
 			} catch (error) {
 				console.error('[startScan] ble scan error thrown', error);
+				setStatus('Scanning failed!');
 			}
 		} else {
 			BleManager.stopScan();
+			setStatus('Scan stopped!');
 		}
 	};
 
 	const handleStopScan = () => {
 		setIsScanning(false);
 		console.debug('[handleStopScan] scan is stopped.');
+	};
+
+	const handelConnectPeripheral = (
+		event: BleDisconnectPeripheralEvent,
+	) => {
+		console.debug(
+			`[handelConnectPeripheral][${currentPeriph.id}]`,
+			event.peripheral,
+		);
+		currentPeriph.connected = true;
+		console.debug(
+			`[handelConnectPeripheral][${event.peripheral}] connected.`,
+		);
+
+		setConnected(currentPeriph.connected);
+		setStatus(`Device connected!`);
+		bleManagerEmitter.removeAllListeners("BleManagerDidUpdateValueForCharacteristic");
 	};
 
 	const handleDisconnectedPeripheral = (
@@ -101,6 +123,10 @@ const App = () => {
 		console.debug(
 			`[handleDisconnectedPeripheral][${event.peripheral}] disconnected.`,
 		);
+
+		setConnected(currentPeriph.connected);
+		setStatus(`Device disconnected!`);
+		bleManagerEmitter.removeAllListeners("BleManagerDidUpdateValueForCharacteristic");
 	};
 
 	const handleUpdateValueForCharacteristic = (
@@ -119,8 +145,10 @@ const App = () => {
 		if (peripheral.name === WWV_DEVICE_NAME) {
 			currentPeriph = peripheral;
 			currentPeriph.connected = false;
-			currentPeriph.connecting = false;
 			setConnected(currentPeriph.connected);
+			currentPeriph.connecting = false;
+
+			setStatus(`Device found!`);
 			BleManager.stopScan().then(() => {
 				console.log("BLE: Found", currentPeriph.name,' ', currentPeriph.id);
 			})
@@ -293,10 +321,16 @@ const App = () => {
 			bleManagerEmitter.addListener(
 				'BleManagerStopScan', 
 				handleStopScan),
+
 			bleManagerEmitter.addListener(
 				'BleManagerDisconnectPeripheral',
 				handleDisconnectedPeripheral,
 			),
+			bleManagerEmitter.addListener(
+				'BleManagerConnectPeripheral',
+				handelConnectPeripheral,
+			),
+
 			bleManagerEmitter.addListener(
 				'BleManagerDidUpdateValueForCharacteristic',
 				handleUpdateValueForCharacteristic,
@@ -387,7 +421,7 @@ const App = () => {
 						styles.scanButton
 					} onPress={toggleScan}>
 					<Text style={styles.scanButtonText}>
-						{isScanning ? 'Scanning...| Stop' : 'Scan for WWV'}
+						{isScanning ? 'Stop' : 'Scan'}
 					</Text>
 				</Pressable>
 {/* 
@@ -397,13 +431,24 @@ const App = () => {
 					</Text>
 				</Pressable> */}
 
+				<View style={[styles.row]}>
+					<Text style={{
+							fontSize: 15,
+							textAlign: 'center',
+							padding: 10,
+							color: 'red'
+						}}>
+						{status}
+					</Text>
+				</View>
+
 				<Pressable style={styles.scanButton} 
 					onPress={ () => {
 						toggleConnection();
 
 					}}>
 					<Text style={styles.scanButtonText}>
-						{connected ? 'Connected' : 'Connect'}
+						{connected ? 'Disconnect' : 'Connect'}
 					</Text>
 				</Pressable>
 
