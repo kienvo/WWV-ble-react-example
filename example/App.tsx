@@ -26,7 +26,11 @@ const SERVICE_UUIDS: string[] = [];
 const ALLOW_DUPLICATES = false;
 const WWV_DEVICE_NAME = 'ESP32';
 const WWV_WINDANGLE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
-const WWV_WINDANGLE_CHAR = ['beb5483e-36e1-4688-b7f5-ea07361b26a8', 'beb5483e-36e1-4688-b7f5-cafecafee270'];
+const WWV_WINDANGLE_CHAR = [
+	'beb5483e-36e1-4688-b7f5-ea07361b26a8', // WIND
+	'beb5483e-36e1-4688-b7f5-cafecafee270', // COMPASS
+	'e64488fb-ddff-49d3-895d-0fe996daeed8'  // HUMID
+];
 
 import BleManager, {
 	BleDisconnectPeripheralEvent,
@@ -51,6 +55,7 @@ var currentPeriph:Peripheral;
 
 const App = () => {
 	const [angle, setAngle] = useState(0);
+	const [humid, setHumid] = useState(0);
 	const [status, setStatus] = useState('');
 	const [meanAngle, setMeanAngle] = useState(0);
 	const [windAngle, setWindAngle] = useState(0);
@@ -197,7 +202,16 @@ const App = () => {
 				}
 				if (characteristic === WWV_WINDANGLE_CHAR[1]) {
 					let v = value[0]+value[1]*0x100;
+					v = v/10.0;
+					v = v.toFixed(1);
 					setAngle(v);
+					console.log(`Received ${v} for characteristic ${characteristic}`);
+				}
+				if (characteristic === WWV_WINDANGLE_CHAR[2]) {
+					let v = value[0]+value[1]*0x100;
+					v = v/100.0;
+					v = v.toFixed(2);
+					setHumid(v);
 					console.log(`Received ${v} for characteristic ${characteristic}`);
 				}
 			}
@@ -450,7 +464,8 @@ const App = () => {
 						{connected ? 'Disconnect' : 'Connect'}
 					</Text>
 				</Pressable>
-
+				
+				{/* angle */}
 				<View style={[styles.row]}>
 					<Text style={{
 							fontSize: 100,
@@ -458,11 +473,27 @@ const App = () => {
 							padding: 10,
 							color: 'white'
 						}}>
-						{angle}
+						{angle}°
+					</Text>
+				</View>
+				{/* humid */}
+				<View style={[styles.row]}>
+					<Text style={{
+							fontSize: 100,
+							textAlign: 'center',
+							padding: 10,
+							color: 'white'
+						}}>
+						{humid}%
 					</Text>
 				</View>
 
 			</SafeAreaView>
+			<Image
+				source={{
+				uri: 'https://reactnative.dev/img/tiny_logo.png',
+				}}
+			/>
 		</>
 	);
 };
