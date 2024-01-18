@@ -18,6 +18,9 @@ import {
 	Pressable,
 	Image,
 } from 'react-native';
+var forge = require('node-forge');
+import {decode as atob, encode as btoa} from 'base-64';
+import { Buffer } from "buffer";
 
 import { Colors } from 'react-native/Libraries/NewAppScreen';
 
@@ -62,6 +65,8 @@ const App = () => {
 	const [compassAngle, setCompassAngle] = useState(0);
 	const [isScanning, setIsScanning] = useState(false);
 	const [connected, setConnected] = useState(false);
+	var iv = forge.util.hexToBytes('30313233343536373839303132333435')
+	var key = forge.util.hexToBytes('30313233343536373839303132333435')
 
 	const toggleScan = () => {
 		if (currentPeriph) {
@@ -133,14 +138,6 @@ const App = () => {
 		bleManagerEmitter.removeAllListeners("BleManagerDidUpdateValueForCharacteristic");
 	};
 
-	const handleUpdateValueForCharacteristic = (
-		data: BleManagerDidUpdateValueForCharacteristicEvent,
-	) => {
-		console.debug(
-			`[handleUpdateValueForCharacteristic] received data from '${data.peripheral}' with characteristic='${data.characteristic}' and value='${data.value}'`,
-		);
-	};
-
 	const handleDiscoverPeripheral = (peripheral: Peripheral) => {
 		console.debug('[handleDiscoverPeripheral] new BLE peripheral=', peripheral);
 		if (!peripheral.name) {
@@ -182,6 +179,7 @@ const App = () => {
 		setConnected(currentPeriph.connected == false);
 	}
 
+
 	async function connectAndPrepare(peripheral: string, service: string, characteristics: string[]) {
 		// Connect to device
 		await BleManager.connect(peripheral);
@@ -201,18 +199,34 @@ const App = () => {
 					console.log(`Received ${v} for characteristic ${characteristic}`);
 				}
 				if (characteristic === WWV_WINDANGLE_CHAR[1]) {
-					let v = value[0]+value[1]*0x100;
+					var decipher = forge.cipher.createDecipher('AES-CTR', key);
+					decipher.start({iv: iv});
+					decipher.update(forge.util.createBuffer(Buffer.from(value).toString('binary')));
+					var result = decipher.finish();
+					var plain = Buffer.from(decipher.output.bytes(), 'binary');
+					// console.log(plain);
+
+					let v = plain[0]+plain[1]*0x100; 
 					v = v/10.0;
 					v = v.toFixed(1);
 					setAngle(v);
-					console.log(`Received ${v} for characteristic ${characteristic}`);
+					// console.log(`Received ${v} for characteristic ${characteristic}`);
+					console.log(`Received ${v} for Angle`);
 				}
 				if (characteristic === WWV_WINDANGLE_CHAR[2]) {
-					let v = value[0]+value[1]*0x100;
+					var decipher = forge.cipher.createDecipher('AES-CTR', key);
+					decipher.start({iv: iv});
+					decipher.update(forge.util.createBuffer(Buffer.from(value).toString('binary')));
+					var result = decipher.finish();
+					var plain = Buffer.from(decipher.output.bytes(), 'binary');
+					// console.log(plain);
+
+					let v = plain[0]+plain[1]*0x100; 
 					v = v/100.0;
 					v = v.toFixed(2);
 					setHumid(v);
-					console.log(`Received ${v} for characteristic ${characteristic}`);
+					// console.log(`Received ${v} for characteristic ${characteristic}`);
+					console.log(`Received ${v} for Humid`);
 				}
 			}
 		);
@@ -290,6 +304,25 @@ const App = () => {
 		return new Promise<void>(resolve => setTimeout(resolve, ms));
 	}
 
+	function test() {
+		var ciphertext = forge.util.hexToBytes('250789c76860d613bea2d7e37fd4431a')
+		var ciphertext2 =  [0x25, 0x07, 0x89, 0xc7, 0x68, 0x60, 0xd6, 0x13, 0xbe, 0xa2, 0xd7, 0xe3, 0x7f, 0xd4, 0x43, 0x1a]
+		var plaintest = forge.util.createBuffer('zzyxxZZYXXzzyxx0')
+
+		var cipher = forge.cipher.createCipher('AES-CTR', key);
+		cipher.start({iv: iv});
+		cipher.update(plaintest);
+		cipher.finish(); 
+		var encrypted = cipher.output;
+		console.log(encrypted.toHex());
+		
+		var decipher = forge.cipher.createDecipher('AES-CTR', key);
+		decipher.start({iv: iv});
+		decipher.update(forge.util.createBuffer(Buffer.from(ciphertext2)));
+		var result = decipher.finish();
+		console.log(decipher.output.toHex());
+	}
+
 	useEffect(() => {
 		// turn on bluetooth if it is not on
 		BleManager.enableBluetooth().then(() => {
@@ -344,13 +377,11 @@ const App = () => {
 				handleConnectPeripheral,
 			),
 
-			bleManagerEmitter.addListener(
-				'BleManagerDidUpdateValueForCharacteristic',
-				handleUpdateValueForCharacteristic,
-			),
 		];
 
 		handleAndroidPermissions();
+		
+		test();
 
 		return () => {
 			console.debug('[app] main component unmounting. Removing listeners...');
