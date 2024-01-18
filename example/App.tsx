@@ -27,7 +27,7 @@ import { Colors } from 'react-native/Libraries/NewAppScreen';
 const SECONDS_TO_SCAN_FOR = 0; // Scan until user click stop
 const SERVICE_UUIDS: string[] = [];
 const ALLOW_DUPLICATES = false;
-const WWV_DEVICE_NAME = 'ESP32';
+const WWV_DEVICE_NAME = 'ThayAI-sensor (drone)';
 const WWV_WINDANGLE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
 const WWV_WINDANGLE_CHAR = [
 	'beb5483e-36e1-4688-b7f5-ea07361b26a8', // WIND
@@ -81,7 +81,7 @@ const App = () => {
 					matchMode: BleScanMatchMode.Aggressive,
 					scanMode: BleScanMode.LowLatency,
 					callbackType: BleScanCallbackType.FirstMatch,
-					exactAdvertisingName: 'ESP32',
+					exactAdvertisingName: WWV_DEVICE_NAME,
 				})
 					.then(() => {
 						console.debug('[startScan] scan promise returned successfully.');
