@@ -25,10 +25,10 @@ import { Buffer } from "buffer";
 import { Colors } from 'react-native/Libraries/NewAppScreen';
 
 const SECONDS_TO_SCAN_FOR = 0; // Scan until user click stop
-const SERVICE_UUIDS: string[] = [];
 const ALLOW_DUPLICATES = false;
-const WWV_DEVICE_NAME = 'ThayAI-sensor (drone)';
+const WWV_DEVICE_NAME = 'Thần Nông';
 const WWV_WINDANGLE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
+const SERVICE_UUIDS: string[] = [WWV_WINDANGLE_UUID];
 const WWV_WINDANGLE_CHAR = [
 	'beb5483e-36e1-4688-b7f5-ea07361b26a8', // WIND
 	'beb5483e-36e1-4688-b7f5-cafecafee270', // COMPASS
@@ -80,7 +80,7 @@ const App = () => {
 				BleManager.scan(SERVICE_UUIDS, SECONDS_TO_SCAN_FOR, ALLOW_DUPLICATES, {
 					matchMode: BleScanMatchMode.Aggressive,
 					scanMode: BleScanMode.LowLatency,
-					callbackType: BleScanCallbackType.FirstMatch,
+					callbackType: BleScanCallbackType.AllMatches,
 					exactAdvertisingName: WWV_DEVICE_NAME,
 				})
 					.then(() => {
